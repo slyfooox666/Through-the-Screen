@@ -63,6 +63,6 @@ The system targets **Video-on-Demand (VoD)** playback, where heavy preprocessing
 ---
 
 ## Next Steps
-- Integrate HQ-SAM or SAM 2 for better temporal segmentation.
+- Improve depth-based clustering/regularisation for thin structures without relying on external semantics.
 - Add learned boundary filler network (optional).
 - Add evaluation script for bitrate/quality trade-off plots.

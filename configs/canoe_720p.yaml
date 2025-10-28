@@ -18,10 +18,10 @@ preprocess:
 playback:
   fps: 30
   viewer_intrinsics:
-    fx: 1100
-    fy: 1100
-    cx: 960
-    cy: 540
+    fx: 900
+    fy: 900
+    cx: 640
+    cy: 360
   max_view_offset: 0.08
   crack_fix:
     enabled: false

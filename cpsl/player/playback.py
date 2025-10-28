@@ -14,6 +14,8 @@ from tqdm import tqdm
 
 from cpsl.config import CPSLConfig, ViewerIntrinsics
 from cpsl.player import synth
+from cpsl.player.dps import DPSParams, reset_dps_state
+from cpsl.player.edge_processing import CrackFiller
 from cpsl.utils.video import VideoWriter
 
 
@@ -48,6 +50,12 @@ class CPSLPlayer:
         self.camera_trace = self._load_trace(config.playback.trace_path)
         self.random_seed = config.playback.random_seed
         self._cached_random_walk: Optional[List[np.ndarray]] = None
+        self._crack_filler: Optional[CrackFiller] = (
+            CrackFiller(config.playback.crack_fix) if config.playback.crack_fix.enabled else None
+        )
+        self._dps_params: Optional[DPSParams] = (
+            DPSParams.from_config(config.playback.dps) if config.playback.dps.enable else None
+        )
 
         self.target_intrinsics = self._compute_target_intrinsics(config.playback.viewer_intrinsics)
         self.source_intrinsics = self._compute_source_intrinsics()
@@ -66,6 +74,7 @@ class CPSLPlayer:
         total_frames = len(frames_meta)
         poses = self._compute_camera_poses(total_frames)
 
+        reset_dps_state()
         with VideoWriter(output_path, fps=fps, frame_size=(width, height)) as writer:
             for idx, frame in tqdm(enumerate(frames_meta), total=total_frames, desc="CPSL playback"):
                 layers = self._load_layers_for_frame(frame)
@@ -208,7 +217,10 @@ class CPSLPlayer:
             t=pose.translation,
             output_size=output_size,
             edge_smooth_px=2,
-            use_zbuffer=True,
+            use_zbuffer=self.config.playback.crack_fix.use_zbuffer_guard,
+            crack_filler=(self._crack_filler.apply if self._crack_filler else None),
+            dps_params=self._dps_params,
+            force_identity_warp=getattr(self.config.playback, "debug_no_warp", False),
         )
 
     def _compute_source_intrinsics(self) -> np.ndarray:

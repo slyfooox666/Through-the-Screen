@@ -17,10 +17,12 @@ At playback, the system performs real-time view synthesis on commodity GPUs with
 ✅ **Depth-Driven Layer Fusion** – Geometry-only clustering yields crisp, object-aligned layers.
 ✅ **MV-Guided Temporal Propagation** – Reuses depth layer masks between frames via codec motion vectors for temporal stability.
 ✅ **Soft Alpha Bands** – Smooth boundary transitions to eliminate cracks or halos at layer edges.
+✅ **Dynamic Pixel Strip (DPS)** – Runtime seam synthesis blends foreground/background to close residual cracks without touching static layers.
 ✅ **VoD-Optimized Storage** – Layers encoded as 2D RGBA streams, fully compatible with existing CDN/DASH infrastructure.
 ✅ **View-Adaptive Synthesizer** – Real-time parallax rendering from user pose without heavy neural inference.
 ✅ **Scalable Efficiency** – Adjustable number of layers (K), bitrate, and foveation level.
 ✅ **Depth Anything Integration** – Geometry-driven layer masks using high-capacity depth backbones.
+✅ **Semantic-Free Pipeline** – The stack relies exclusively on depth cues; external segmentation stages were removed after they failed to preserve layer ordering.
 ✅ **Geometry-Aware Playback** – Plane-induced homographies per layer with linear-space compositing and optional Z-buffer.
 
 ---
@@ -163,6 +165,32 @@ Controls:
 - Mouse or keyboard to adjust yaw/pitch/roll.
 - Optional foveation and pose control.
 - Outputs parallax-corrected view frames in real time.
+- Seam & crack sealing (`--crack-fix-*` flags):
+  ```
+  python cpsl_playback.py \
+    --config configs/default.yaml \
+    --input data/output_vod/monkey \
+    --output data/output_vod/monkey/playback_crackfix.mp4 \
+    --crack-fix-enabled \
+    --crack-fix-band-px 3 \
+    --crack-fix-dilate-px 2 \
+    --crack-fix-depth-tol-rel 0.01 \
+    --crack-fix-fill-strength 0.1 \
+    --crack-fix-inpaint-radius 3 \
+    --crack-fix-inpaint-alpha 0.2
+  ```
+  Leave additional controls (micro-offset sampling, depth jump gating, Z-buffer guard) at their defaults unless fine-tuning is required; disabling the flag reverts to the baseline compositor.
+
+- Dynamic Pixel Strip is now on by default. Toggle or tune via:
+  ```
+  python cpsl_playback.py \
+    --input data/output_vod/monkey \
+    --output data/output_vod/monkey/playback_dps.mp4 \
+    --dps.backend numpy \
+    --dps.band_px 3 \
+    --dps.feather_px 2
+  ```
+  Use `--dps.enable` to ensure DPS runs when overriding configs; set `--dps.backend cupy` to force GPU execution when available.
 
 ### 3) Evaluation
 ```
@@ -217,6 +245,7 @@ Expected outputs:
 - Add **learned boundary filler** (tiny UNet) for complex edges.
 - Support **multi-view merging** for larger scenes.
 - Integrate **live capture path** for MMSys (real-time CPSL generation).
+- Extend crack-fix evaluation harness (crack-rate, boundary F-score, trimap IoU) and profile seam-pass runtime (goal ≤2.5 ms @1080p).
 
 ---
 
