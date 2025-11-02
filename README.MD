@@ -15,15 +15,19 @@ At playback, the system performs real-time view synthesis on commodity GPUs with
 ## 2. Key Features
 
 ✅ **Depth-Driven Layer Fusion** – Geometry-only clustering yields crisp, object-aligned layers.
-✅ **MV-Guided Temporal Propagation** – Reuses depth layer masks between frames via codec motion vectors for temporal stability.
-✅ **Soft Alpha Bands** – Smooth boundary transitions to eliminate cracks or halos at layer edges.
-✅ **Dynamic Pixel Strip (DPS)** – Runtime seam synthesis blends foreground/background to close residual cracks without touching static layers.
-✅ **VoD-Optimized Storage** – Layers encoded as 2D RGBA streams, fully compatible with existing CDN/DASH infrastructure.
+✅ **Soft Alpha Bands** – Smooth boundary transitions to reduce cracks/halos at layer edges.
+✅ **Dynamic Pixel Strip (DPS) — Rebuilt** – Deterministic, geometry-aware seam filler that:
+  - detects a narrow seam band (edges + uncovered regions),
+  - classifies pixels via local depth gap (foreground extension vs. background reveal),
+  - blends one-sided in premultiplied linear space, with optional band-limited inpainting,
+  - adds temporal stability using optional pose/flow warp + EMA.
 ✅ **View-Adaptive Synthesizer** – Real-time parallax rendering from user pose without heavy neural inference.
 ✅ **Scalable Efficiency** – Adjustable number of layers (K), bitrate, and foveation level.
 ✅ **Depth Anything Integration** – Geometry-driven layer masks using high-capacity depth backbones.
-✅ **Semantic-Free Pipeline** – The stack relies exclusively on depth cues; external segmentation stages were removed after they failed to preserve layer ordering.
+✅ **Semantic-Free Pipeline** – The stack relies on depth cues; semantics optional.
 ✅ **Geometry-Aware Playback** – Plane-induced homographies per layer with linear-space compositing and optional Z-buffer.
+
+Note: MV-guided temporal propagation and encoded layer streams are roadmap items (not yet integrated).
 
 ---
 
@@ -62,7 +66,7 @@ cpsl/
     player/                  # view-adaptive synth + edge processing
   cpsl_preprocess.py          # offline preprocessor entrypoint
   cpsl_playback.py            # playback renderer
-  cpsl_eval.py                # metrics & evaluation scripts
+  cpsl_eval.py                # (placeholder) metrics & evaluation scripts
   tests/                      # unit tests for warping, alpha, OBMC
 
 ---
@@ -181,22 +185,33 @@ Controls:
   ```
   Leave additional controls (micro-offset sampling, depth jump gating, Z-buffer guard) at their defaults unless fine-tuning is required; disabling the flag reverts to the baseline compositor.
 
-- Dynamic Pixel Strip is now on by default. Toggle or tune via:
+#### DPS (Seam-Filling) Controls
+- Enable DPS and tune for larger motions:
   ```
   python cpsl_playback.py \
     --input data/output_vod/monkey \
     --output data/output_vod/monkey/playback_dps.mp4 \
-    --dps.backend numpy \
+    --dps.enable \
     --dps.band_px 3 \
-    --dps.feather_px 2
+    --dps.feather_px 2 \
+    --dps.depth_tolerance 0.02 \
+    --dps.alpha_threshold 0.98 \
+    --dps.feather_weight 0.65 \
+    --dps.temporal_ema 0.25 \
+    --dps.extension_px 1.5 \
+    --dps.inpaint telea \
+    --dps.inpaint_radius 2
   ```
-  Use `--dps.enable` to ensure DPS runs when overriding configs; set `--dps.backend cupy` to force GPU execution when available.
+  Tips:
+  - Add `--trace traces/viewport_orbit.csv` for deterministic paths.
+  - Use `--max-view-offset 0.12` to stress-test with larger random-walk excursions.
+  - Backends: `--dps.backend auto|numpy|cupy` (CuPy optional).
 
 ### 3) Evaluation
 ```
-python cpsl_eval.py --metrics all
+python cpsl_eval.py --metrics all   # placeholder entry; see cpsl/player/metrics.py for helpers
 ```
-Reports:
+Metrics available (helpers in codebase):
 - Boundary F-score (edge accuracy)
 - Trimap IoU (alpha quality)
 - Crack Rate (% low-opacity pixels at boundaries)

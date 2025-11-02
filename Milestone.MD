@@ -27,26 +27,31 @@
 
 ### Geometry-Aware Playback
 - `cpsl/player/playback.py` loads metadata, generates camera poses (CSV trace or smoothed random walk), and feeds layers to the synthesiser.
-- `cpsl/player/synth.py` provides all homography and compositing primitives:
+- `cpsl/player/synth.py` provides the homography + compositing primitives:
   - Linear ↔ sRGB conversions, plane-induced homographies, edge-smoothed warps.
   - Z-buffer-aware front-to-back compositing to preserve occlusions.
-- `cpsl/player/dps.py` implements the Dynamic Pixel Strip (DPS) runtime seam filler, blending foreground/background layers inside a narrow band before final composite.
-- `cpsl/player/edge_processing.py` (new) introduces a band-limited crack filler that performs depth-aware dilation, background pulls, and Telea inpainting, exposed via config/CLI flags and wired into playback behind a feature gate.
-- `VideoWriter` utility streams resulting frames to disk; playback CLI supports FPS overrides and output path selection.
+- `cpsl/player/dps.py` has been rebuilt with a deterministic, geometry-aware Dynamic Pixel Strip (DPS):
+  - Detects a thin seam band (edges + uncovered regions) and, per pixel, selects closest foreground and next deeper layer.
+  - Uses local depth gap to choose foreground extension vs. true background reveal.
+  - One-sided, premultiplied blending in linear space with optional band-limited inpainting.
+  - Temporal stability via optional pose/flow reprojection + EMA blending.
+  - Exposed as `apply_dps(warped: Dict[str,np.ndarray], D_star: Optional[np.ndarray], cfg: DpsConfig)` and integrated in the player; legacy `build_dynamic_strip` is preserved.
+- `cpsl/player/edge_processing.py` provides an alternative band-limited crack filler (feature-gated).
+- `VideoWriter` streams frames to disk; playback CLI supports FPS overrides, output selection, traces, and DPS knobs.
 
 ### Supporting Utilities
 - `cpsl/utils/fs.py` and `cpsl/utils/video.py` wrap filesystem tasks and OpenCV IO.
 - `cpsl/utils/img.py` and `cpsl/utils/morph.py` add premultiplication and morphology helpers backing DPS.
 - Depth Anything repo (`Depth-Anything-V2/`) is vendored, enabling fully offline execution when checkpoints are supplied locally.
-- `cpsl/player/metrics.py` now provides crack rate, boundary F-score, and trimap IoU helpers for seam-fix ablations.
+- `cpsl/player/metrics.py` provides crack rate, boundary F-score, and trimap IoU helpers for seam-fix ablations.
 
 ## Gaps & Open Work
 - **Temporal propagation**: No motion-vector reuse or keyframe/P-frame handling yet—pipeline reprocesses every frame independently.
 - **Encoding layer streams**: `EncodeConfig` is defined but unused; layers remain as PNG + `.npy` rather than HEVC/AV1 assets.
-- **Evaluation tooling**: `cpsl_eval.py` is referenced in docs but absent; automated reporting (LPIPS, crack metrics) still needs wiring despite helper functions existing.
-- **Normals / plane fitting**: Playback currently assumes fronto-parallel planes; normals are `None` and not persisted in metadata.
-- **Unit tests / CI**: No automated validation covering depth dispatch, clustering, or synthesiser accuracy.
-- **Semantic promotion**: `promote_classes` hook exists, but external segmentation was dropped after it failed to provide reliable depth ordering; current roadmap focuses on depth-driven grouping.
+- **Evaluation tooling**: `cpsl_eval.py` remains a placeholder; automated reporting (LPIPS, crack metrics) needs wiring despite helper functions existing.
+- **Normals / plane fitting**: Playback assumes fronto-parallel planes; normals are `None` and not persisted in metadata.
+- **Unit tests / CI**: Add broader tests for depth dispatch, clustering, and synthesiser accuracy.
+- **Semantic promotion**: `promote_classes` exists, but external segmentation was dropped; roadmap remains depth-driven grouping.
 
 ## Risks & Dependencies
 - Dependence on large Depth Anything v2 checkpoints (stored outside repo) and CUDA availability.
@@ -55,12 +60,12 @@
 - Temporal coherence and disocclusion handling are minimal (single-frame soft alpha only).
 
 ## Recommended Next Moves
-1. **Depth clustering quality**: Investigate depth-only failure cases (thin structures, noisy maps) via improved smoothing/regularisation rather than external semantics.
-2. **Add temporal propagation**: Implement motion-vector warping between GOP keyframes and update metadata schema accordingly.
-3. **Codec integration**: Hook `EncodeConfig` into an ffmpeg/pyav encoder to emit RGBA/alpha streams instead of standalone PNGs.
-4. **Evaluation harness**: Create `cpsl_eval.py` with automated metrics over `data/output_vod/*`, enabling regression tracking.
-5. **Metadata enrichment**: Persist estimated normals/plane parameters to improve playback parallax accuracy.
-6. **Crack-fix validation**: Wire the new metrics into ablation scripts (A0–A3) and profile runtime to stay within the ≤2.5 ms budget.
-7. **Automation & tests**: Introduce smoke tests (short clip) and CI scripts to prevent regressions across depth backends and playback.
+1. **Depth clustering quality**: Improve handling of thin structures/noise via smoothing/regularisation.
+2. **Add temporal propagation**: Implement MV-guided warping between GOP keyframes and update metadata.
+3. **Codec integration**: Wire `EncodeConfig` to ffmpeg/pyav to emit RGBA/alpha streams instead of PNGs.
+4. **Evaluation harness**: Create `cpsl_eval.py` with automated metrics over `data/output_vod/*` for regressions.
+5. **Metadata enrichment**: Persist normals/plane params to improve parallax accuracy.
+6. **DPS profiling**: Benchmark rebuilt DPS; target <3 ms at 1080p, and tune defaults across scenes.
+7. **Automation & tests**: Add smoke tests and CI to prevent regressions across depth backends and playback.
 
 This milestone summary reflects the current engineering state of the CPSL prototype and should help prioritise the next development sprint.
